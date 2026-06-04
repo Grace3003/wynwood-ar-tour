@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Wynwood AR Mural Tour</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --surface: #111111;
+      --border: #222222;
+      --accent: #ff4d00;
+      --accent2: #ffb800;
+      --text: #f0ede8;
+      --muted: #666;
+      --card: #161616;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── grain overlay ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 999;
+      opacity: 0.4;
+    }
+
+    /* ── loading screen ── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      gap: 20px;
+      transition: opacity 0.5s ease;
+    }
+    #loading.hide { opacity: 0; pointer-events: none; }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 13px;
+      letter-spacing: 4px;
+      color: var(--muted);
+    }
+
+    /* ── expired screen ── */
+    #expired-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      gap: 16px;
+    }
+    #expired-screen.show { display: flex; }
+
+    .expired-icon {
+      font-size: 56px;
+      margin-bottom: 8px;
+    }
+    .expired-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(36px, 8vw, 64px);
+      letter-spacing: 3px;
+      color: var(--accent);
+    }
+    .expired-sub {
+      font-size: 15px;
+      color: var(--muted);
+      max-width: 340px;
+      line-height: 1.6;
+    }
+
+    /* ── invalid screen ── */
+    #invalid-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      gap: 16px;
+    }
+    #invalid-screen.show { display: flex; }
+
+    /* ── main content ── */
+    #main-content {
+      display: none;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+    }
+    #main-content.show { display: block; }
+    #main-content.visible { opacity: 1; }
+
+    /* ── header ── */
+    header {
+      padding: 32px 24px 0;
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    .eyebrow {
+      font-size: 11px;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+
+    .tour-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(48px, 12vw, 96px);
+      line-height: 0.9;
+      letter-spacing: 2px;
+      margin-bottom: 20px;
+    }
+
+    .tour-title span {
+      display: block;
+      color: var(--accent2);
+    }
+
+    .access-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #1a1a00;
+      border: 1px solid var(--accent2);
+      border-radius: 4px;
+      padding: 8px 14px;
+      font-size: 12px;
+      letter-spacing: 1px;
+      color: var(--accent2);
+      margin-bottom: 8px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      background: var(--accent2);
+      border-radius: 50%;
+      animation: pulse 1.5s ease infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .expires-tag {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 32px;
+    }
+
+    .expires-tag strong { color: var(--text); }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 0 24px 32px;
+      max-width: 680px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* ── instructions ── */
+    .instructions {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 24px 28px;
+    }
+
+    .instructions-title {
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .steps {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .step {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 14px;
+      color: #999;
+      line-height: 1.5;
+    }
+
+    .step-num {
+      width: 22px;
+      height: 22px;
+      border: 1px solid var(--border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--accent);
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ── mural grid ── */
+    .murals-section {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 24px 60px;
+    }
+
+    .section-label {
+      font-size: 11px;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .mural-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      animation: slideUp 0.5s ease both;
+    }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .mural-card:nth-child(1) { animation-delay: 0.1s; }
+    .mural-card:nth-child(2) { animation-delay: 0.2s; }
+    .mural-card:nth-child(3) { animation-delay: 0.3s; }
+    .mural-card:nth-child(4) { animation-delay: 0.4s; }
+
+    .mural-info { flex: 1; }
+
+    .mural-number {
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: var(--muted);
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .mural-name {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 22px;
+      letter-spacing: 1px;
+      margin-bottom: 2px;
+    }
+
+    .mural-desc {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .scan-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #fff;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      padding: 10px 18px;
+      border-radius: 6px;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .scan-btn:hover {
+      background: #e64400;
+      transform: translateY(-1px);
+    }
+
+    .scan-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* countdown */
+    #countdown-bar {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 24px 24px;
+    }
+
+    .countdown-label {
+      font-size: 11px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .countdown-time {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 28px;
+      letter-spacing: 2px;
+      color: var(--accent2);
+    }
+
+    .progress-track {
+      height: 2px;
+      background: var(--border);
+      border-radius: 2px;
+      margin-top: 10px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      transition: width 1s linear;
+    }
+
+    footer {
+      text-align: center;
+      padding: 0 24px 40px;
+      font-size: 11px;
+      color: #333;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Verifying Access</div>
+</div>
+
+<!-- EXPIRED -->
+<div id="expired-screen">
+  <div class="expired-icon">🔒</div>
+  <div class="expired-title">Access Expired</div>
+  <div class="expired-sub">This AR tour link was valid only for the day of purchase. Purchase a new ticket to access the Wynwood AR Mural Experience.</div>
+</div>
+
+<!-- INVALID -->
+<div id="invalid-screen">
+  <div class="expired-icon">⛔</div>
+  <div class="expired-title">Invalid Link</div>
+  <div class="expired-sub">This link is not recognized. Please check your confirmation email for the correct AR access link.</div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div id="main-content">
+
+  <header>
+    <div class="eyebrow">Wynwood Walls · AR Mural Experience</div>
+    <h1 class="tour-title">Your<span>AR Tour.</span></h1>
+    <div class="access-badge">
+      <div class="dot"></div>
+      Access Active
+    </div>
+    <div class="expires-tag">Your link expires at <strong>midnight tonight</strong>. Use it at the murals.</div>
+  </header>
+
+  <div class="divider"></div>
+
+  <!-- Countdown -->
+  <div id="countdown-bar">
+    <div class="countdown-label">Time Remaining</div>
+    <div class="countdown-time" id="countdown">--:--:--</div>
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill" style="width:100%"></div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Instructions -->
+  <div class="instructions">
+    <div class="instructions-title">How to use</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div>Walk up to any mural on your tour map.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div>Tap the <strong style="color:var(--text)">View AR</strong> button next to that mural below.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div>Point your phone camera at the mural and watch it come alive.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Murals -->
+  <div class="murals-section">
+    <div class="section-label">Murals on Your Tour</div>
+
+    <div class="mural-card">
+      <div class="mural-info">
+        <div class="mural-number">Mural 01</div>
+        <div class="mural-name">El Mac</div>
+        <div class="mural-desc">Figures & Roses · Wynwood</div>
+      </div>
+      <a class="scan-btn" href="PASTE_EL_MAC_ARCODE_URL_HERE" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3m0 4h4v-4m-4 0h-3"/></svg>
+        View AR
+      </a>
+    </div>
+
+    <div class="mural-card">
+      <div class="mural-info">
+        <div class="mural-number">Mural 02</div>
+        <div class="mural-name">TREK6</div>
+        <div class="mural-desc">Everlasting Bass · Wynwood</div>
+      </div>
+      <a class="scan-btn" href="PASTE_TREK6_ARCODE_URL_HERE" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3m0 4h4v-4m-4 0h-3"/></svg>
+        View AR
+      </a>
+    </div>
+
+    <div class="mural-card">
+      <div class="mural-info">
+        <div class="mural-number">Mural 03</div>
+        <div class="mural-name">Favela Painting</div>
+        <div class="mural-desc">Color Grid · Wynwood Bakery</div>
+      </div>
+      <a class="scan-btn" href="PASTE_FAVELA_ARCODE_URL_HERE" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3m0 4h4v-4m-4 0h-3"/></svg>
+        View AR
+      </a>
+    </div>
+
+    <div class="mural-card">
+      <div class="mural-info">
+        <div class="mural-number">Mural 04</div>
+        <div class="mural-name">Antonyo Marest</div>
+        <div class="mural-desc">Abstract Tower · Wynwood</div>
+      </div>
+      <a class="scan-btn" href="PASTE_ANTONYO_ARCODE_URL_HERE" target="_blank">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3m0 4h4v-4m-4 0h-3"/></svg>
+        View AR
+      </a>
+    </div>
+
+  </div>
+
+  <footer>Wynwood AR Tour &nbsp;·&nbsp; Single-day access &nbsp;·&nbsp; Non-transferable</footer>
+
+</div>
+
+<script>
+  // ── Token validation ──────────────────────────────────────────
+  function getParam(name) {
+    return new URLSearchParams(window.location.search).get(name);
+  }
+
+  function getMidnight() {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return midnight.getTime();
+  }
+
+  function showScreen(id) {
+    document.getElementById('loading').classList.add('hide');
+    setTimeout(() => {
+      if (id === 'main') {
+        const el = document.getElementById('main-content');
+        el.classList.add('show');
+        setTimeout(() => el.classList.add('visible'), 50);
+      } else if (id === 'expired') {
+        document.getElementById('expired-screen').classList.add('show');
+      } else if (id === 'invalid') {
+        document.getElementById('invalid-screen').classList.add('show');
+      }
+    }, 800);
+  }
+
+  function validate() {
+    const token = getParam('token');
+    const expiry = getParam('expires'); // unix timestamp in ms passed by n8n
+
+    if (!token || !expiry) {
+      showScreen('invalid');
+      return;
+    }
+
+    const now = Date.now();
+    const expiryTime = parseInt(expiry, 10);
+
+    if (isNaN(expiryTime) || now > expiryTime) {
+      showScreen('expired');
+      return;
+    }
+
+    showScreen('main');
+    startCountdown(expiryTime);
+  }
+
+  // ── Countdown timer ───────────────────────────────────────────
+  function startCountdown(expiryTime) {
+    const totalMs = expiryTime - Date.now();
+    const dayMs = 86400000;
+
+    function update() {
+      const remaining = expiryTime - Date.now();
+      if (remaining <= 0) {
+        document.getElementById('countdown').textContent = '00:00:00';
+        document.getElementById('progress-fill').style.width = '0%';
+        // redirect to expired
+        document.getElementById('main-content').style.display = 'none';
+        document.getElementById('expired-screen').classList.add('show');
+        return;
+      }
+
+      const h = Math.floor(remaining / 3600000);
+      const m = Math.floor((remaining % 3600000) / 60000);
+      const s = Math.floor((remaining % 60000) / 1000);
+
+      document.getElementById('countdown').textContent =
+        String(h).padStart(2,'0') + ':' +
+        String(m).padStart(2,'0') + ':' +
+        String(s).padStart(2,'0');
+
+      // progress bar: based on how much of the day is left
+      const pct = Math.max(0, (remaining / dayMs) * 100);
+      document.getElementById('progress-fill').style.width = pct + '%';
+
+      setTimeout(update, 1000);
+    }
+
+    update();
+  }
+
+  validate();
+</script>
+</body>
+</html>
